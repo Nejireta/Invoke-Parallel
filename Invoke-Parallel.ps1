@@ -1,7 +1,7 @@
 function Invoke-Parallel {
     	<#
         .SYNOPSIS
-            function for multithreading
+            Template function for multithreading
 
         .DESCRIPTION
             Parallel iteration function which uses CreateRunspacePool to execute code and return values
