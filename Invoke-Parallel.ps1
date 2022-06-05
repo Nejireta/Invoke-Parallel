@@ -18,6 +18,10 @@ function Invoke-Parallel {
         [switch]
         If the function should switch to threadsafe collections
 
+    .PARAMETER ThreadSafe
+        [int]
+        The timeout amount, in milliseconds, before the thread gets discarded
+
     .OUTPUTS
         [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]
         Or
