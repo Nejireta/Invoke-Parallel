@@ -58,8 +58,11 @@ function Invoke-Parallel {
             [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
         )
         [void]$RunspacePool.SetMaxRunspaces([System.Environment]::ProcessorCount)
+
+        # The Thread will create and enter a multithreaded apartment
         $RunspacePool.ApartmentState = [System.Threading.ApartmentState]::MTA
-        $RunspacePool.ThreadOptions = [System.Management.Automation.Runspaces.PSThreadOptions]::UseNewThread
+        # UseNewThread for local Runspace, ReuseThread for local RunspacePool, server settings for remote Runspace and RunspacePool
+        $RunspacePool.ThreadOptions = [System.Management.Automation.Runspaces.PSThreadOptions]::Default
         $RunspacePool.Open()
     }
 
