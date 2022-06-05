@@ -1,31 +1,31 @@
 function Invoke-Parallel {
-    	<#
-        .SYNOPSIS
-            Template function for multithreading
+    <#
+    .SYNOPSIS
+        Template function for multithreading
 
-        .DESCRIPTION
-            Parallel iteration function which uses CreateRunspacePool to execute code and return values
+    .DESCRIPTION
+        Parallel iteration function which uses CreateRunspacePool to execute code and return values
 
-        .PARAMETER Array
-            [string[]]
-            Array of which should be iterated through
+    .PARAMETER Array
+        [string[]]
+        Array of which should be iterated through
 
-        .PARAMETER Arg2
-            [string]
-            Placeholder parameter to express functionality
+    .PARAMETER Arg2
+        [string]
+        Placeholder parameter to express functionality
 
-        .PARAMETER ThreadSafe
-            [switch]
-            If the function should switch to threadsafe collections
+    .PARAMETER ThreadSafe
+        [switch]
+        If the function should switch to threadsafe collections
 
-        .OUTPUTS
-            [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]
-            Or
-            [System.Collections.Generic.List[PSCustomObject]]
+    .OUTPUTS
+        [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]
+        Or
+        [System.Collections.Generic.List[PSCustomObject]]
 
-        .EXAMPLE
-            $result = Invoke-Parallel -Array (1..10) -Arg2 "asd"
-    #>
+    .EXAMPLE
+        $result = Invoke-Parallel -Array (1..10) -Arg2 "asd"
+#>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -45,12 +45,12 @@ function Invoke-Parallel {
     begin {
         if ($ThreadSafe) {
             $Parameters = [System.Collections.Concurrent.ConcurrentDictionary[[string], [array]]]::new()
-            $jobsList = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
+            $jobsList = [System.Collections.Concurrent.ConcurrentBag[System.Collections.Generic.Dictionary[[string], [object]]]]::new()
             $ResultList = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
         }
         else {
             $Parameters = [System.Collections.Generic.Dictionary[[string], [array]]]::new(1)
-            $jobsList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
+            $jobsList = [System.Collections.Generic.List[System.Collections.Generic.Dictionary[[string], [object]]]]::new($Array.Count)
             $ResultList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
         }
 
@@ -96,10 +96,10 @@ function Invoke-Parallel {
                 }, $true) #Setting UseLocalScope to $True fixes scope creep with variables in RunspacePool
 
             [void]$PowerShell.AddParameters($Parameters)
-            [void]$jobsList.Add([PSCustomObject]@{
-                    PowerShell = $PowerShell
-                    Handle     = $PowerShell.BeginInvoke()
-                })
+            $jobDictionary = [System.Collections.Generic.Dictionary[[string], [object]]]::new()
+            $jobDictionary.Add('PowerShell', $PowerShell)
+            $jobDictionary.Add('Handle', $PowerShell.BeginInvoke())
+            [void]$jobsList.Add($jobDictionary)
         }
     }
 
@@ -109,10 +109,11 @@ function Invoke-Parallel {
         }
 
         foreach ($job in $jobsList) {
-            $ResultList.Add($job.PowerShell.EndInvoke($job.Handle))
-            $job.PowerShell.Dispose()
+            $ResultList.Add($job['PowerShell'].EndInvoke($job['Handle']))
+            $job['PowerShell'].Dispose()
         }
 
+        $jobDictionary.Clear()
         $RunspacePool.Close()
         $RunspacePool.Dispose()
         $jobsList.clear()
