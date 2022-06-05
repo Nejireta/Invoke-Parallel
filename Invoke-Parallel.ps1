@@ -65,7 +65,8 @@ function Invoke-Parallel {
         )
         [void]$RunspacePool.SetMaxRunspaces([System.Environment]::ProcessorCount)
 
-        # The Thread will create and enter a multithreaded apartment
+        # The Thread will create and enter a multithreaded apartment.
+        # DCOM communication requires STA ApartmentState!
         $RunspacePool.ApartmentState = [System.Threading.ApartmentState]::MTA
         # UseNewThread for local Runspace, ReuseThread for local RunspacePool, server settings for remote Runspace and RunspacePool
         $RunspacePool.ThreadOptions = [System.Management.Automation.Runspaces.PSThreadOptions]::Default
