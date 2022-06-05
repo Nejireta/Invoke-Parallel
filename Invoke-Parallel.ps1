@@ -58,11 +58,9 @@ function Invoke-Parallel {
             [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
         )
         [void]$RunspacePool.SetMaxRunspaces([System.Environment]::ProcessorCount)
+        $RunspacePool.ApartmentState = [System.Threading.ApartmentState]::MTA
+        $RunspacePool.ThreadOptions = [System.Management.Automation.Runspaces.PSThreadOptions]::UseNewThread
         $RunspacePool.Open()
-
-        if ([string]::IsNullOrEmpty($Arg2)) {
-            $Arg2 = 'NULL'
-        }
     }
 
     process {
@@ -95,7 +93,7 @@ function Invoke-Parallel {
                             ErrorMessage = $_.Exception.Message
                         }
                     }
-                }, $True) #Setting UseLocalScope to $True fixes scope creep with variables in RunspacePool
+                }, $true) #Setting UseLocalScope to $True fixes scope creep with variables in RunspacePool
 
             [void]$PowerShell.AddParameters($Parameters)
             [void]$jobsList.Add([PSCustomObject]@{
@@ -115,9 +113,13 @@ function Invoke-Parallel {
             $job.PowerShell.Dispose()
         }
 
-        $jobsList.clear()
         $RunspacePool.Close()
         $RunspacePool.Dispose()
+        $jobsList.clear()
+        $Parameters.Clear()
+        [System.GC]::Collect()
+        [System.GC]::WaitForPendingFinalizers()
+        [System.GC]::Collect()
         return $ResultList
     }
 }
