@@ -39,7 +39,11 @@ function Invoke-Parallel {
 
         [Parameter(Mandatory = $false)]
         [switch]
-        $ThreadSafe
+        $ThreadSafe,
+
+        [Parameter(Mandatory = $false)]
+        [int]
+        $Timeout = 120000
     )
 
     begin {
@@ -51,9 +55,10 @@ function Invoke-Parallel {
         else {
             $Parameters = [System.Collections.Generic.Dictionary[[string], [array]]]::new(1)
             $jobsList = [System.Collections.Generic.List[System.Collections.Generic.Dictionary[[string], [object]]]]::new($Array.Count)
-            #$jobsList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
             $ResultList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
         }
+
+        $Stopwatch = [System.Diagnostics.Stopwatch]::new()
 
         $RunspacePool = [RunspaceFactory]::CreateRunspacePool(
             [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
@@ -85,6 +90,9 @@ function Invoke-Parallel {
                         #$Arg2 = $Pipeline[1]
                         try {
                             # Insert some code here and return desired result as a PSCustomObject
+
+                            $rnd = [System.Random]::new()
+                            [System.Threading.Thread]::Sleep($rnd.Next(1000, 150000))
                             return [PSCustomObject]@{
                                 Key1         = $Pipeline[0]
                                 Key2         = $Pipeline[1]
@@ -106,8 +114,8 @@ function Invoke-Parallel {
 
                 [void]$PowerShell.AddParameters($Parameters)
                 $jobDictionary = [System.Collections.Generic.Dictionary[[string], [object]]]::new()
-                $jobDictionary.Add('PowerShell', $PowerShell)
-                $jobDictionary.Add('Handle', $PowerShell.BeginInvoke())
+                [void]$jobDictionary.Add('PowerShell', $PowerShell)
+                [void]$jobDictionary.Add('Handle', $PowerShell.BeginInvoke())
                 [void]$jobsList.Add($jobDictionary)
             }
         }
@@ -117,15 +125,32 @@ function Invoke-Parallel {
     }
 
     end {
-        while ($jobsList.ToArray().Handle.IsCompleted -eq $false) {
+        $Stopwatch = [System.Diagnostics.Stopwatch]::new()
+        $Stopwatch.Start()
+        while ($jobsList.Handle.IsCompleted -eq $false) {
+            if ($jobsList.Where({$_.Handle.IsCompleted -eq $true}).Count -gt 0) {
+                $jobsList.Where({
+                    $_.Handle.IsCompleted -eq $true
+                }).ForEach({
+                    [void]$jobsList.Remove($_)
+                    [void]$ResultList.Add($_.PowerShell.EndInvoke($_.Handle))
+                    $_.PowerShell.Dispose()
+                })
+            }
+
+            if ($Stopwatch.Elapsed.Milliseconds -ge $Timeout) {
+                $jobsList.ForEach({
+                    [void]$jobsList.Remove($_)
+                    # If there's a need to wait for the thread to stop add $_.PowerShell.BeginStop() into a List for later processing
+                    $_.PowerShell.BeginStop()
+                })
+                break
+            }
+
             [System.Threading.Thread]::Sleep(50)
         }
 
-        foreach ($job in $jobsList) {
-            $ResultList.Add($job['PowerShell'].EndInvoke($job['Handle']))
-            $job['PowerShell'].Dispose()
-        }
-
+        $Stopwatch.Stop()
         $jobDictionary.Clear()
         $RunspacePool.Close()
         $RunspacePool.Dispose()
