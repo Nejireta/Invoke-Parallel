@@ -59,7 +59,6 @@ function Invoke-Parallel {
         }
 
         $Stopwatch = [System.Diagnostics.Stopwatch]::new()
-
         $RunspacePool = [RunspaceFactory]::CreateRunspacePool(
             [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
         )
@@ -123,7 +122,6 @@ function Invoke-Parallel {
     }
 
     end {
-        $Stopwatch = [System.Diagnostics.Stopwatch]::new()
         $Stopwatch.Start()
         while ($jobsList.Handle.IsCompleted -eq $false) {
             if ($jobsList.Where({$_.Handle.IsCompleted -eq $true}).Count -gt 0) {
