@@ -90,9 +90,6 @@ function Invoke-Parallel {
                         #$Arg2 = $Pipeline[1]
                         try {
                             # Insert some code here and return desired result as a PSCustomObject
-
-                            $rnd = [System.Random]::new()
-                            [System.Threading.Thread]::Sleep($rnd.Next(1000, 150000))
                             return [PSCustomObject]@{
                                 Key1         = $Pipeline[0]
                                 Key2         = $Pipeline[1]
