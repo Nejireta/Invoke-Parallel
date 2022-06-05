@@ -18,7 +18,7 @@ function Invoke-Parallel {
         [switch]
         If the function should switch to threadsafe collections
 
-    .PARAMETER ThreadSafe
+    .PARAMETER Timeout
         [int]
         The timeout amount, in milliseconds, before the thread gets discarded
 
