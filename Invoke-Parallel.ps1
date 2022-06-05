@@ -51,6 +51,7 @@ function Invoke-Parallel {
         else {
             $Parameters = [System.Collections.Generic.Dictionary[[string], [array]]]::new(1)
             $jobsList = [System.Collections.Generic.List[System.Collections.Generic.Dictionary[[string], [object]]]]::new($Array.Count)
+            #$jobsList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
             $ResultList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
         }
 
@@ -67,47 +68,56 @@ function Invoke-Parallel {
     }
 
     process {
-        foreach ($Item in $Array) {
-            $Parameters.Pipeline = @($Item, $Arg2)
-            $PowerShell = [PowerShell]::Create()
-            $PowerShell.RunspacePool = $RunspacePool
+        try {
+            foreach ($Item in $Array) {
+                $Parameters.Pipeline = @($Item, $Arg2)
+                $PowerShell = [PowerShell]::Create()
+                $PowerShell.RunspacePool = $RunspacePool
 
-            [void]$PowerShell.AddScript({
-                    Param (
-                        $Pipeline
-                    )
+                [void]$PowerShell.AddScript({
+                        Param (
+                            $Pipeline
+                        )
 
-                    # Adds array iteration to variable
-                    #$Arg1 = $Pipeline[0]
-                    # Adds Arg2 Parameter to variable
-                    #$Arg2 = $Pipeline[1]
-                    try {
-                        # Insert some code here and return desired result as a PSCustomObject
-                        return [PSCustomObject]@{
-                            Key1         = $Pipeline[0]
-                            Key2         = $Pipeline[1]
-                            ErrorMessage = 'NULL'
+                        # Adds array iteration to variable
+                        #$Arg1 = $Pipeline[0]
+                        # Adds Arg2 Parameter to variable
+                        #$Arg2 = $Pipeline[1]
+                        try {
+                            # Insert some code here and return desired result as a PSCustomObject
+                            return [PSCustomObject]@{
+                                Key1         = $Pipeline[0]
+                                Key2         = $Pipeline[1]
+                                ErrorMessage = 'NULL'
+                            }
                         }
-                    }
-                    catch {
-                        return [PSCustomObject]@{
-                            Key1         = $Pipeline[0]
-                            Key2         = $Pipeline[1]
-                            ErrorMessage = $_.Exception.Message
+                        catch {
+                            # Handle errors here
+                            return [PSCustomObject]@{
+                                Key1         = $Pipeline[0]
+                                Key2         = $Pipeline[1]
+                                ErrorMessage = $_.Exception.Message
+                            }
                         }
-                    }
-                }, $true) #Setting UseLocalScope to $True fixes scope creep with variables in RunspacePool
+                        finally {
+                            # Handle object disposal here
+                        }
+                    }, $true) #Setting UseLocalScope to $true fixes scope creep with variables in RunspacePool
 
-            [void]$PowerShell.AddParameters($Parameters)
-            $jobDictionary = [System.Collections.Generic.Dictionary[[string], [object]]]::new()
-            $jobDictionary.Add('PowerShell', $PowerShell)
-            $jobDictionary.Add('Handle', $PowerShell.BeginInvoke())
-            [void]$jobsList.Add($jobDictionary)
+                [void]$PowerShell.AddParameters($Parameters)
+                $jobDictionary = [System.Collections.Generic.Dictionary[[string], [object]]]::new()
+                $jobDictionary.Add('PowerShell', $PowerShell)
+                $jobDictionary.Add('Handle', $PowerShell.BeginInvoke())
+                [void]$jobsList.Add($jobDictionary)
+            }
+        }
+        catch {
+            throw
         }
     }
 
     end {
-        While ($jobsList.handle.IsCompleted -eq $False) {
+        while ($jobsList.ToArray().Handle.IsCompleted -eq $false) {
             [System.Threading.Thread]::Sleep(50)
         }
 
