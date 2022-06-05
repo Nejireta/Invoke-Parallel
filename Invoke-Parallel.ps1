@@ -43,7 +43,7 @@ function Invoke-Parallel {
 
         [Parameter(Mandatory = $false)]
         [int]
-        $Timeout = 120000
+        $Timeout = 6000
     )
 
     begin {
@@ -129,17 +129,20 @@ function Invoke-Parallel {
                 $jobsList.Where({
                     $_.Handle.IsCompleted -eq $true
                 }).ForEach({
-                    [void]$jobsList.Remove($_)
                     [void]$ResultList.Add($_.PowerShell.EndInvoke($_.Handle))
                     $_.PowerShell.Dispose()
+                    [void]$jobsList.Remove($_)
                 })
             }
 
             if ($Stopwatch.Elapsed.Milliseconds -ge $Timeout) {
                 $jobsList.ForEach({
+                    # Starts an asynchronous call to stop the powershell thread
+                    # This will discard any eventual return data
+                    # fairly certain it'll also not dispose of the thread
+                    # maybe call Dispose() directly (?)
+                    $_.PowerShell.StopAsync($_.Handle)
                     [void]$jobsList.Remove($_)
-                    # If there's a need to wait for the thread to stop add $_.PowerShell.BeginStop() into a List for later processing
-                    $_.PowerShell.BeginStop()
                 })
                 break
             }
