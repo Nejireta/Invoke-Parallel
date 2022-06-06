@@ -2,31 +2,24 @@ function Invoke-Parallel {
     <#
     .SYNOPSIS
         Template function for multithreading
-
     .DESCRIPTION
         Parallel iteration function which uses CreateRunspacePool to execute code and return values
-
     .PARAMETER Array
         [string[]]
         Array of which should be iterated through
-
     .PARAMETER Arg2
         [string]
         Placeholder parameter to express functionality
-
     .PARAMETER ThreadSafe
         [switch]
         If the function should switch to threadsafe collections
-
-    .PARAMETER Timeout
+    .PARAMETER ThreadSafe
         [int]
         The timeout amount, in milliseconds, before the thread gets discarded
-
     .OUTPUTS
         [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]
         Or
         [System.Collections.Generic.List[PSCustomObject]]
-
     .EXAMPLE
         $result = Invoke-Parallel -Array (1..10) -Arg2 "asd"
 #>
@@ -42,6 +35,10 @@ function Invoke-Parallel {
         $Arg2,
 
         [Parameter(Mandatory = $false)]
+        [int]
+        $ScriptSleep,
+
+        [Parameter(Mandatory = $false)]
         [switch]
         $ThreadSafe,
 
@@ -53,7 +50,7 @@ function Invoke-Parallel {
     begin {
         if ($ThreadSafe) {
             $Parameters = [System.Collections.Concurrent.ConcurrentDictionary[[string], [array]]]::new()
-            $jobsList = [System.Collections.Concurrent.ConcurrentBag[System.Collections.Generic.Dictionary[[string], [object]]]]::new()
+            $jobsList = [System.Collections.Concurrent.ConcurrentBag[System.Collections.Concurrent.ConcurrentDictionary[[string], [object]]]]::new()
             $ResultList = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
         }
         else {
@@ -62,7 +59,6 @@ function Invoke-Parallel {
             $ResultList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
         }
 
-        $Stopwatch = [System.Diagnostics.Stopwatch]::new()
         $RunspacePool = [RunspaceFactory]::CreateRunspacePool(
             [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
         )
@@ -79,7 +75,7 @@ function Invoke-Parallel {
     process {
         try {
             foreach ($Item in $Array) {
-                $Parameters.Pipeline = @($Item, $Arg2)
+                $Parameters.Pipeline = @($Item, $Arg2, $Timeout, $ScriptSleep)
                 $PowerShell = [PowerShell]::Create()
                 $PowerShell.RunspacePool = $RunspacePool
 
@@ -94,17 +90,21 @@ function Invoke-Parallel {
                         #$Arg2 = $Pipeline[1]
                         try {
                             # Insert some code here and return desired result as a PSCustomObject
+                            [System.Threading.Thread]::Sleep($Pipeline[3])
                             return [PSCustomObject]@{
-                                Key1         = $Pipeline[0]
-                                Key2         = $Pipeline[1]
-                                ErrorMessage = 'NULL'
+                                Item        = $Pipeline[0]
+                                Arg2        = $Pipeline[1]
+                                Timeout     = $Pipeline[2]
+                                ScriptSleep = $Pipeline[3]
                             }
                         }
                         catch {
                             # Handle errors here
                             return [PSCustomObject]@{
-                                Key1         = $Pipeline[0]
-                                Key2         = $Pipeline[1]
+                                Item         = $Pipeline[0]
+                                Arg2         = $Pipeline[1]
+                                Timeout      = $Pipeline[2]
+                                ScriptSleep  = $Pipeline[3]
                                 ErrorMessage = $_.Exception.Message
                             }
                         }
@@ -114,9 +114,11 @@ function Invoke-Parallel {
                     }, $true) #Setting UseLocalScope to $true fixes scope creep with variables in RunspacePool
 
                 [void]$PowerShell.AddParameters($Parameters)
-                $jobDictionary = [System.Collections.Generic.Dictionary[[string], [object]]]::new()
-                [void]$jobDictionary.Add('PowerShell', $PowerShell)
-                [void]$jobDictionary.Add('Handle', $PowerShell.BeginInvoke())
+                $jobDictionary = [System.Collections.Concurrent.ConcurrentDictionary[[string], [object]]]::new()
+                $cancellationTokenSource = [System.Threading.CancellationTokenSource]::new($Timeout)
+                [void]$jobDictionary.TryAdd('PowerShell', $PowerShell)
+                [void]$jobDictionary.TryAdd('Handle', $PowerShell.BeginInvoke())
+                [void]$jobDictionary.TryAdd('CancellationToken', $cancellationTokenSource.Token)
                 [void]$jobsList.Add($jobDictionary)
             }
         }
@@ -126,42 +128,76 @@ function Invoke-Parallel {
     }
 
     end {
-        $Stopwatch.Start()
-        while ($jobsList.Handle.IsCompleted -eq $false) {
-            if ($jobsList.Where({$_.Handle.IsCompleted -eq $true}).Count -gt 0) {
-                $jobsList.Where({
-                    $_.Handle.IsCompleted -eq $true
-                }).ForEach({
-                    [void]$ResultList.Add($_.PowerShell.EndInvoke($_.Handle))
-                    $_.PowerShell.Dispose()
-                    [void]$jobsList.Remove($_)
-                })
-            }
+        try {
+            while ($true) {
+                # This will require a threadsafe collection
+                [System.Linq.Enumerable]::Where(
+                    $jobsList,
+                    [Func[System.Collections.Concurrent.ConcurrentDictionary[[string], [object]], bool]] {
+                        param($job) $job.Handle.IsCompleted -eq $true
+                    }).ForEach({
+                        # Adding the output from scriptblock into $ResultList
+                        [void]$ResultList.Add($_.PowerShell.EndInvoke($_.Handle))
+                        $_.PowerShell.Dispose()
+                        # Clear the dictionary entry.
+                        # A better way would be to completely remove it from the list, but ConcurrentBag...
+                        [void]$_.Clear() 
+                    })
 
-            if ($Stopwatch.Elapsed.Milliseconds -ge $Timeout) {
-                $jobsList.ForEach({
-                    # Starts an asynchronous call to stop the powershell thread
-                    # This will discard any eventual return data
-                    # fairly certain it'll also not dispose of the thread
-                    # maybe call Dispose() directly (?)
-                    $_.PowerShell.StopAsync($_.Handle)
-                    [void]$jobsList.Remove($_)
-                })
-                break
-            }
+                [System.Linq.Enumerable]::Where(
+                    $jobsList,
+                    [Func[System.Collections.Concurrent.ConcurrentDictionary[[string], [object]], bool]] {
+                        param($job) $job.CancellationToken.IsCancellationRequested -eq $true -and $job.Handle.IsCompleted -ne $true
+                    }).ForEach({
+                        # If calling dispose() on the thread while stopping it.
+                        # Will either throw an error or lock up the thread while waiting for the underlying process to finish
+                        [void]$_.PowerShell.StopAsync($null, $_.Handle)
+                        # Clear the dictionary entry.
+                        # A better way would be to completely remove it from the list, but ConcurrentBag...
+                        [void]$_.Clear()
 
-            [System.Threading.Thread]::Sleep(50)
+                    })
+
+                if ($jobsList.Keys.Count -eq 0) {
+                    # Breaks out of the loop to start cleanup
+                    break
+                }
+
+                <#
+                foreach ($job in $jobsList) {
+                    if ($job.Handle.IsCompleted -eq $true ) {
+                        [void]$ResultList.Add($job.PowerShell.EndInvoke($job.Handle))
+                        $job.PowerShell.Dispose()
+                        [void]$job.Clear()
+                        continue
+                    }
+                    if ($job.CancellationToken.IsCancellationRequested -eq $true) {
+                        $job.PowerShell.StopAsync($null, $job.Handle) # If called dispose while stopping it will either throw an error or the thread will wait for the task to complete
+                        #$job.PowerShell.EndStop($job.PowerShell.BeginStop($null, $job.Handle))
+                        #$job.PowerShell.Dispose() # Will wait for the underlying task to complete
+                        [void]$job.Clear()
+                    }
+                }
+                if ($jobsList.Keys.Count -eq 0) {
+                    break
+                }
+                #>
+            }
+            return $ResultList
         }
-
-        $Stopwatch.Stop()
-        $jobDictionary.Clear()
-        $RunspacePool.Close()
-        $RunspacePool.Dispose()
-        $jobsList.clear()
-        $Parameters.Clear()
-        [System.GC]::Collect()
-        [System.GC]::WaitForPendingFinalizers()
-        [System.GC]::Collect()
-        return $ResultList
+        catch {
+            throw
+        }
+        finally {
+            $cancellationTokenSource.Dispose()
+            $jobDictionary.Clear()
+            $RunspacePool.Close()
+            $RunspacePool.Dispose()
+            $jobsList.clear()
+            $Parameters.Clear()
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+            [System.GC]::Collect()
+        }
     }
 }
