@@ -156,6 +156,9 @@ function Invoke-Parallel {
                         $CRP = $_CRP.GetValue($Worker)
                         #$CRP.Runspace.DisconnectAsync() # Won't work for local sessions
                         $CRP.Runspace.CloseAsync() # Will wait for thread to finish
+
+                        #[void][System.Threading.Tasks.Task]::Run($_.PowerShell.Stop) # Will wait for thread to finish
+
                         #[void]$_.PowerShell.StopAsync($null, $_.Handle) # Only works on PS 7
                         #[void]$_.PowerShell.EndStop($_.PowerShell.BeginStop($null, $_.Handle)) # Will wait for thread to finish
                         #$_.PowerShell.Dispose() # Will wait for thread to finish
@@ -208,4 +211,4 @@ function Invoke-Parallel {
     }
 }
 
-Invoke-Parallel -Array (1..3) -Arg2 "asd" -Timeout 100 -ScriptSleep 12000 > $null
+Invoke-Parallel -Array (1..3) -Arg2 "asd" -Timeout 100 -ScriptSleep 120000 > $null
