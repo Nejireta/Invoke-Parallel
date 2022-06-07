@@ -162,6 +162,7 @@ function Invoke-Parallel {
                         #[void]$_.PowerShell.StopAsync($null, $_.Handle) # Only works on PS 7
                         #[void]$_.PowerShell.EndStop($_.PowerShell.BeginStop($null, $_.Handle)) # Will wait for thread to finish
                         #$_.PowerShell.Dispose() # Will wait for thread to finish
+
                         # Clear the dictionary entry.
                         # A better way would be to completely remove it from the list, but ConcurrentBag...
                         [void]$_.Clear()
