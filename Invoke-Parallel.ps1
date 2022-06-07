@@ -149,16 +149,16 @@ function Invoke-Parallel {
                     }).ForEach({
                         # If calling dispose() on the thread while stopping it.
                         # Will either throw an error or lock up the thread while waiting for the underlying process to finish
-                        $Flags = 'Static','NonPublic','Instance' #Private
+                        $Flags = 'Static','NonPublic','Instance'
                         $_Worker = $_.PowerShell.GetType().GetField('_worker', $Flags)
                         $Worker = $_Worker.GetValue($_.PowerShell)
                         $_CRP = $worker.GetType().GetProperty('CurrentlyRunningPipeline', $Flags)
                         $CRP = $_CRP.GetValue($Worker)
-                        $CRP.Runspace.DisconnectAsync()
-                        $CRP.Runspace.CloseAsync()
+                        #$CRP.Runspace.DisconnectAsync() # Won't work for local sessions
+                        $CRP.Runspace.CloseAsync() # Will wait for thread to finish
                         #[void]$_.PowerShell.StopAsync($null, $_.Handle) # Only works on PS 7
-                        #[void]$_.PowerShell.EndStop($_.PowerShell.BeginStop($null, $_.Handle))
-                        #$_.PowerShell.Dispose()
+                        #[void]$_.PowerShell.EndStop($_.PowerShell.BeginStop($null, $_.Handle)) # Will wait for thread to finish
+                        #$_.PowerShell.Dispose() # Will wait for thread to finish
                         # Clear the dictionary entry.
                         # A better way would be to completely remove it from the list, but ConcurrentBag...
                         [void]$_.Clear()
@@ -197,8 +197,8 @@ function Invoke-Parallel {
         finally {
             $cancellationTokenSource.Dispose()
             $jobDictionary.Clear()
-            $RunspacePool.Close()
-            $RunspacePool.Dispose()
+            $RunspacePool.Close() # Will wait for child runspaces to close
+            $RunspacePool.Dispose() # Will wait for child runspaces to close
             $jobsList.clear()
             $Parameters.Clear()
             [System.GC]::Collect()
@@ -208,4 +208,4 @@ function Invoke-Parallel {
     }
 }
 
-Invoke-Parallel -Array (1..3) -Arg2 "asd" -Timeout 100 -ScriptSleep 120000 > $null
+Invoke-Parallel -Array (1..3) -Arg2 "asd" -Timeout 100 -ScriptSleep 12000 > $null
