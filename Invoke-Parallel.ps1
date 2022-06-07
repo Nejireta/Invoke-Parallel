@@ -10,16 +10,11 @@ function Invoke-Parallel {
     .PARAMETER Arg2
         [string]
         Placeholder parameter to express functionality
-    .PARAMETER ThreadSafe
-        [switch]
-        If the function should switch to threadsafe collections
-    .PARAMETER ThreadSafe
+    .PARAMETER Timeout
         [int]
         The timeout amount, in milliseconds, before the thread gets discarded
     .OUTPUTS
         [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]
-        Or
-        [System.Collections.Generic.List[PSCustomObject]]
     .EXAMPLE
         $result = Invoke-Parallel -Array (1..10) -Arg2 "asd"
 #>
@@ -39,25 +34,14 @@ function Invoke-Parallel {
         $ScriptSleep,
 
         [Parameter(Mandatory = $false)]
-        [switch]
-        $ThreadSafe,
-
-        [Parameter(Mandatory = $false)]
         [int]
         $Timeout = 6000
     )
 
     begin {
-        if ($ThreadSafe) {
-            $Parameters = [System.Collections.Concurrent.ConcurrentDictionary[[string], [array]]]::new()
-            $jobsList = [System.Collections.Concurrent.ConcurrentBag[System.Collections.Concurrent.ConcurrentDictionary[[string], [object]]]]::new()
-            $ResultList = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
-        }
-        else {
-            $Parameters = [System.Collections.Generic.Dictionary[[string], [array]]]::new(1)
-            $jobsList = [System.Collections.Generic.List[System.Collections.Generic.Dictionary[[string], [object]]]]::new($Array.Count)
-            $ResultList = [System.Collections.Generic.List[PSCustomObject]]::new($Array.Count)
-        }
+        $Parameters = [System.Collections.Concurrent.ConcurrentDictionary[[string], [array]]]::new()
+        $jobsList = [System.Collections.Concurrent.ConcurrentBag[System.Collections.Concurrent.ConcurrentDictionary[[string], [object]]]]::new()
+        $ResultList = [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]::new()
 
         $RunspacePool = [RunspaceFactory]::CreateRunspacePool(
             [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
@@ -141,7 +125,7 @@ function Invoke-Parallel {
                         $_.PowerShell.Dispose()
                         # Clear the dictionary entry.
                         # A better way would be to completely remove it from the list, but ConcurrentBag...
-                        [void]$_.Clear() 
+                        [void]$_.Clear()
                     })
 
                 [System.Linq.Enumerable]::Where(
