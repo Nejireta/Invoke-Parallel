@@ -31,11 +31,13 @@ function Invoke-Parallel {
 
         [Parameter(Mandatory = $false)]
         [int]
-        $ScriptSleep,
-
-        [Parameter(Mandatory = $false)]
-        [int]
         $Timeout = 6000
+
+        <#
+        [Parameter(Mandatory = $true)]
+        [int]
+        $ScriptSleep
+        #>
     )
 
     begin {
@@ -59,7 +61,8 @@ function Invoke-Parallel {
     process {
         try {
             foreach ($Item in $Array) {
-                $Parameters.Pipeline = @($Item, $Arg2, $Timeout, $ScriptSleep)
+                #$Parameters.Pipeline = @($Item, $Arg2, $ScriptSleep, $Timeout)
+                $Parameters.Pipeline = @($Item, $Arg2, $Timeout)
                 $PowerShell = [PowerShell]::Create()
                 $PowerShell.RunspacePool = $RunspacePool
 
@@ -74,12 +77,12 @@ function Invoke-Parallel {
                         #$Arg2 = $Pipeline[1]
                         try {
                             # Insert some code here and return desired result as a PSCustomObject
-                            [System.Threading.Thread]::Sleep($Pipeline[3])
+                            #[System.Threading.Thread]::Sleep($Pipeline[3])
                             return [PSCustomObject]@{
                                 Item        = $Pipeline[0]
                                 Arg2        = $Pipeline[1]
                                 Timeout     = $Pipeline[2]
-                                ScriptSleep = $Pipeline[3]
+                                #ScriptSleep = $Pipeline[3]
                             }
                         }
                         catch {
@@ -88,7 +91,7 @@ function Invoke-Parallel {
                                 Item         = $Pipeline[0]
                                 Arg2         = $Pipeline[1]
                                 Timeout      = $Pipeline[2]
-                                ScriptSleep  = $Pipeline[3]
+                                #ScriptSleep  = $Pipeline[3]
                                 ErrorMessage = $_.Exception.Message
                             }
                         }
