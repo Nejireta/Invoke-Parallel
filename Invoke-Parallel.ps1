@@ -13,11 +13,14 @@ function Invoke-Parallel {
     .PARAMETER Timeout
         [int]
         The timeout amount, in milliseconds, before the thread gets discarded
+    .PARAMETER ScriptSleep
+        [int]
+        The time in milliseconds during which the thread will sleep for
     .OUTPUTS
         [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]
     .EXAMPLE
-        $result = Invoke-Parallel -Array (1..10) -Arg2 "asd" -Timeout 120000
-#>
+        $result = Invoke-Parallel -Array (1..10) -Arg2 "asd" -Timeout 100 -ScriptSleep 120
+    #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -31,7 +34,11 @@ function Invoke-Parallel {
 
         [Parameter(Mandatory = $false)]
         [int]
-        $Timeout = 6000
+        $Timeout = 6000,
+
+        [Parameter(Mandatory = $true)]
+        [int]
+        $ScriptSleep
     )
 
     begin {
@@ -55,7 +62,7 @@ function Invoke-Parallel {
     process {
         try {
             foreach ($Item in $Array) {
-                $Parameters.Pipeline = @($Item, $Arg2, $Timeout)
+                $Parameters.Pipeline = @($Item, $Arg2, $Timeout, $ScriptSleep)
                 $PowerShell = [PowerShell]::Create()
                 $PowerShell.RunspacePool = $RunspacePool
 
@@ -70,10 +77,12 @@ function Invoke-Parallel {
                         #$Arg2 = $Pipeline[1]
                         try {
                             # Insert some code here and return desired result as a PSCustomObject
+                            [System.Threading.Thread]::Sleep($Pipeline[3])
                             return [PSCustomObject]@{
                                 Item        = $Pipeline[0]
                                 Arg2        = $Pipeline[1]
                                 Timeout     = $Pipeline[2]
+                                ScriptSleep = $Pipeline[3]
                             }
                         }
                         catch {
@@ -82,6 +91,7 @@ function Invoke-Parallel {
                                 Item         = $Pipeline[0]
                                 Arg2         = $Pipeline[1]
                                 Timeout      = $Pipeline[2]
+                                ScriptSleep  = $Pipeline[3]
                                 ErrorMessage = $_.Exception.Message
                             }
                         }
@@ -139,6 +149,26 @@ function Invoke-Parallel {
                     # Breaks out of the loop to start cleanup
                     break
                 }
+
+                <#
+                foreach ($job in $jobsList) {
+                    if ($job.Handle.IsCompleted -eq $true ) {
+                        [void]$ResultList.Add($job.PowerShell.EndInvoke($job.Handle))
+                        $job.PowerShell.Dispose()
+                        [void]$job.Clear()
+                        continue
+                    }
+                    if ($job.CancellationToken.IsCancellationRequested -eq $true) {
+                        $job.PowerShell.StopAsync($null, $job.Handle) # If called dispose while stopping it will either throw an error or the thread will wait for the task to complete
+                        #$job.PowerShell.EndStop($job.PowerShell.BeginStop($null, $job.Handle))
+                        #$job.PowerShell.Dispose() # Will wait for the underlying task to complete
+                        [void]$job.Clear()
+                    }
+                }
+                if ($jobsList.Keys.Count -eq 0) {
+                    break
+                }
+                #>
             }
             return $ResultList
         }
