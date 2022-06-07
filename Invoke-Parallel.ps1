@@ -116,6 +116,17 @@ function Invoke-Parallel {
 
     end {
         try {
+            <#
+            foreach ($job in $jobsList) {
+                $Flag = 'static','nonpublic','instance'
+                $_Worker = $job.PowerShell.GetType().GetField('_worker',$Flag)
+                $Worker = $_Worker.GetValue($job.PowerShell)
+                $_CRP = $worker.GetType().GetProperty('CurrentlyRunningPipeline',$Flag)
+                $CRP = $_CRP.GetValue($Worker)
+                $CRP.Runspace.CloseAsync()
+            }
+            #>
+
             while ($true) {
                 # This will require a threadsafe collection
                 [System.Linq.Enumerable]::Where(
@@ -138,11 +149,19 @@ function Invoke-Parallel {
                     }).ForEach({
                         # If calling dispose() on the thread while stopping it.
                         # Will either throw an error or lock up the thread while waiting for the underlying process to finish
-                        [void]$_.PowerShell.StopAsync($null, $_.Handle)
+                        $Flags = 'Static','NonPublic','Instance' #Private
+                        $_Worker = $_.PowerShell.GetType().GetField('_worker', $Flags)
+                        $Worker = $_Worker.GetValue($_.PowerShell)
+                        $_CRP = $worker.GetType().GetProperty('CurrentlyRunningPipeline', $Flags)
+                        $CRP = $_CRP.GetValue($Worker)
+                        $CRP.Runspace.DisconnectAsync()
+                        $CRP.Runspace.CloseAsync()
+                        #[void]$_.PowerShell.StopAsync($null, $_.Handle) # Only works on PS 7
+                        #[void]$_.PowerShell.EndStop($_.PowerShell.BeginStop($null, $_.Handle))
+                        #$_.PowerShell.Dispose()
                         # Clear the dictionary entry.
                         # A better way would be to completely remove it from the list, but ConcurrentBag...
                         [void]$_.Clear()
-
                     })
 
                 if ($jobsList.Keys.Count -eq 0) {
@@ -188,3 +207,5 @@ function Invoke-Parallel {
         }
     }
 }
+
+Invoke-Parallel -Array (1..3) -Arg2 "asd" -Timeout 100 -ScriptSleep 120000 > $null
