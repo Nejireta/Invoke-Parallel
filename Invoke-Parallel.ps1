@@ -17,7 +17,9 @@ function Invoke-Parallel {
         [System.Collections.Concurrent.ConcurrentBag[PSCustomObject]]
     .EXAMPLE
         $result = Invoke-Parallel -Array (1..10) -Arg2 "asd" -Timeout 120000
-#>
+    .NOTES
+        The use case of PowerShell.StopAsync() requires PowerShell 7 in order to work.
+    #>
     [CmdletBinding()]
     param (
         [Parameter(Mandatory = $true, ValueFromPipeline = $true)]
@@ -71,9 +73,9 @@ function Invoke-Parallel {
                         try {
                             # Insert some code here and return desired result as a PSCustomObject
                             return [PSCustomObject]@{
-                                Item        = $Pipeline[0]
-                                Arg2        = $Pipeline[1]
-                                Timeout     = $Pipeline[2]
+                                Item    = $Pipeline[0]
+                                Arg2    = $Pipeline[1]
+                                Timeout = $Pipeline[2]
                             }
                         }
                         catch {
